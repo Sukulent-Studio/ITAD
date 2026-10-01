@@ -14,7 +14,7 @@ SOURCE_URL = "https://archive.ics.uci.edu/static/public/560/seoul+bike+sharing+d
 SOURCE_FILENAME = "seoul+bike+sharing+demand.zip"
 DATASET_SLUG = "seoul_bike"
 HTTP_CONN_ID = "source_http_conn"
-S3_CONN_ID = "minio_s3_conn"
+S3_CONN_ID = "s3_conn"
 
 parsed_url = urlsplit(SOURCE_URL)
 endpoint = parsed_url.path or "/"
