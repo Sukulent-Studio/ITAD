@@ -1,10 +1,10 @@
 # dbt-модели
 
-Модели этого проекта материализуются во внешние Parquet-файлы MinIO.
+Модели этого проекта материализуются во внешние Parquet-файлы SeaweedFS.
 
 - Файл из `models/staging/` с тегом `staging` записывается как `s3://staging/<model>.parquet`.
 - Файл из `models/marts/` с тегом `mart` записывается как `s3://mart/<model>.parquet`.
-- Источники raw объявляются в YAML с `external_location`, указывающим на объект или шаблон объектов MinIO.
+- Источники raw объявляются в YAML с `external_location`, указывающим на объект или шаблон объектов SeaweedFS.
 
 Пример staging-модели:
 
