@@ -9,22 +9,12 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@airflow-db:5432/${POSTGRES_DB}
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "false"
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
-    # Официальный entrypoint Airflow применяет миграции и создаёт администратора
-    # при запуске сервисов. Отдельный init-контейнер не требуется.
-    _AIRFLOW_DB_MIGRATE: "true"
-    _AIRFLOW_WWW_USER_CREATE: "true"
-    _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USERNAME}
-    _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
-    _AIRFLOW_WWW_USER_FIRSTNAME: ITAD
-    _AIRFLOW_WWW_USER_LASTNAME: Admin
-    _AIRFLOW_WWW_USER_EMAIL: admin@example.local
-    _AIRFLOW_WWW_USER_ROLE: Admin
-    AIRFLOW_CONN_MINIO_S3_CONN: ${AIRFLOW_CONN_MINIO_S3_CONN}
+    AIRFLOW_CONN_S3_CONN: ${AIRFLOW_CONN_S3_CONN}
     AIRFLOW_CONN_SOURCE_HTTP_CONN: ${AIRFLOW_CONN_SOURCE_HTTP_CONN}
     # Нужны будущим dbt-задачам, запускаемым внутри сети Compose.
-    MINIO_S3_ENDPOINT: minio:9000
-    MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    S3_ENDPOINT: seaweedfs:8333
+    S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+    S3_SECRET_KEY: ${S3_SECRET_KEY}
     PROJECT_ROOT: /opt/airflow/project
     PYTHONPATH: /opt/airflow/project/src
   volumes:
@@ -36,23 +26,42 @@ x-airflow-common: &airflow-common
   user: "${AIRFLOW_UID:-50000}:0"
 
 services:
-  minio:
-    # Актуальные официальные образы MinIO публикуются в Quay Registry.
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
-    command: server /data --console-address ":9001"
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48
+    # Entrypoint готовит права тома и переключается на пользователя seaweed.
+    user: "0:0"
+    # Малые внутренние тома оставляют место для всех бакетов на локальном диске.
+    command:
+      - mini
+      - -dir=/data
+      - -ip=seaweedfs
+      - -s3.port=8333
+      - -filer.port=8888
+      - -master.volumeSizeLimitMB=256
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: raw,staging,mart
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:8333:8333"
+      - "127.0.0.1:8888:8888"
     volumes:
-      - minio-data:/data
+      - seaweedfs-data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # S3-запросы проверки доступа и наличия всех трёх бакетов.
+      test:
+        - CMD-SHELL
+        - |
+          for bucket in raw staging mart; do
+            curl --fail --silent --show-error \
+              --aws-sigv4 aws:amz:us-east-1:s3 \
+              --user "$$AWS_ACCESS_KEY_ID:$$AWS_SECRET_ACCESS_KEY" \
+              "http://127.0.0.1:8333/$$bucket/" >/dev/null || exit 1
+          done
       interval: 5s
       timeout: 5s
       retries: 20
+      start_period: 30s
 
   airflow-db:
     image: postgres:16.8-alpine
@@ -73,18 +82,42 @@ services:
     depends_on:
       airflow-db:
         condition: service_healthy
+      airflow-scheduler:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
     command: webserver
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
 
   airflow-scheduler:
     <<: *airflow-common
+    environment:
+      <<: *airflow-environment
+      # Только scheduler готовит метабазу и администратора перед своим запуском.
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USERNAME}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+      _AIRFLOW_WWW_USER_FIRSTNAME: ITAD
+      _AIRFLOW_WWW_USER_LASTNAME: Admin
+      _AIRFLOW_WWW_USER_EMAIL: admin@example.local
+      _AIRFLOW_WWW_USER_ROLE: Admin
     depends_on:
       airflow-db:
         condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
     command: scheduler
+    healthcheck:
+      # Heartbeat появляется после завершения миграций и запуска scheduler.
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
 
 volumes:
   airflow-db-data:
   airflow-logs:
-  minio-data:
+  seaweedfs-data:

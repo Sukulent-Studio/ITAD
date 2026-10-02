@@ -5,16 +5,26 @@
 ## Контур данных
 
 ```text
-Источник → raw в MinIO → staging → mart → анализ и отчёт.
+Источник → raw в SeaweedFS → staging → mart → анализ и отчёт.
 ```
 
-MinIO хранит файлы. Airflow ожидает и скачивает HTTP-источник. PostgreSQL используется только как база метаданных
-Airflow. DuckDB читает и записывает Parquet-объекты в MinIO, а dbt задаёт SQL-модели. dbt запускается через `uv`, а не
+SeaweedFS хранит файлы. Airflow ожидает и скачивает HTTP-источник. PostgreSQL используется только как база метаданных
+Airflow. DuckDB читает и записывает Parquet-объекты в SeaweedFS, а dbt задаёт SQL-модели. dbt запускается через `uv`, а не
 как отдельный Docker-сервис.
 
-При старте webserver и scheduler используют штатный entrypoint Airflow: он применяет миграции метабазы и создаёт
-администратора из `.env`. Отдельных init-контейнеров нет. Бакет `raw` создаётся ingestion-кодом при первой записи;
-`staging` и `mart` появятся только в следующих работах.
+SeaweedFS работает в одном контейнере в режиме `weed mini`. При запуске entrypoint готовит права тома и
+переключается на пользователя `seaweed`, а `S3_BUCKET=raw,staging,mart` обеспечивает создание недостающих бакетов.
+Существующие объекты сохраняются. Healthcheck проверяет подписанным S3-запросом доступность каждого бакета.
+Размер внутренних томов SeaweedFS задан равным 256 МиБ, чтобы на небольшом локальном диске хватало томов для
+служебных данных и всех трёх бакетов. Это не ограничение общего размера бакета.
+
+После успешной проверки airflow scheduler применяет миграции метабазы и создаёт администратора из `.env`, затем начинает
+работу. Airflow webserver запускается после успешной проверки heartbeat scheduler. Отдельные init-сервисы не нужны.
+
+Используются стандартные порты SeaweedFS: S3 API доступен на `http://localhost:8333`, а файловый интерфейс — по адресу
+`http://localhost:8888/buckets/`; в нём видны бакеты и их объекты. На хосте используются `S3_ENDPOINT`,
+`S3_ACCESS_KEY` и `S3_SECRET_KEY` из `.env`, а Airflow получает подключение `s3_conn` с адресом
+`http://seaweedfs:8333` внутри сети Compose.
 
 ## Команды
 
@@ -27,12 +37,9 @@ uv run ruff check .
 docker compose up --build -d
 uv run --env-file .env dbt debug --project-dir dbt --profiles-dir dbt
 uv run --env-file .env dbt build --project-dir dbt --profiles-dir dbt
-uv run --env-file .env python scripts/read_raw.py --path "s3://raw/green_tripdata/ingested_on=2026-01-01/green_tripdata_2025-01.parquet"
+uv run --env-file .env python scripts/read_raw.py --path "s3://raw/seoul_bike/ingested_on=2026-10-02/SeoulBikeData.csv"
 docker compose down
 ```
-
-`Makefile` оставлен как необязательные сокращения для macOS, Linux и WSL. В частности, можно выполнить
-`make read-raw RAW_PATH="s3://raw/green_tripdata/ingested_on=2026-01-01/green_tripdata_2025-01.parquet"`.
 
 ## Структура
 
@@ -41,5 +48,5 @@ docker compose down
 - `airflow/dags/` — DAG'и оркестрации.
 - `src/` — код ingestion, проверки и анализа.
 - `scripts/` — кроссплатформенные точки входа для локальных проверок.
-- `dbt/` — dbt-модели, материализуемые во внешние Parquet-файлы MinIO.
+- `dbt/` — dbt-модели, материализуемые во внешние Parquet-файлы SeaweedFS.
 - `infra/` — место для инфраструктурных материалов следующих лабораторных работ.
