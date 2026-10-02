@@ -28,9 +28,9 @@ def reader_for(filename: str) -> str:
 
 def configure_minio(connection: duckdb.DuckDBPyConnection) -> None:
     """Настроить S3-совместимый доступ DuckDB к локальному MinIO."""
-    endpoint = os.getenv("MINIO_S3_ENDPOINT", "localhost:9000")
-    access_key = os.getenv("MINIO_ROOT_USER", "minioadmin")
-    secret_key = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin123")
+    endpoint = os.getenv("S3_ENDPOINT", "localhost:9000")
+    access_key = os.getenv("S3_ACCESS_KEY", "minioadmin")
+    secret_key = os.getenv("S3_SECRET_KEY", "minioadmin123")
 
     connection.execute("INSTALL httpfs")
     connection.execute("LOAD httpfs")

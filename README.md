@@ -37,7 +37,7 @@ uv run ruff check .
 docker compose up --build -d
 uv run --env-file .env dbt debug --project-dir dbt --profiles-dir dbt
 uv run --env-file .env dbt build --project-dir dbt --profiles-dir dbt
-uv run --env-file .env python scripts/read_raw.py --path "s3://raw/green_tripdata/ingested_on=2026-01-01/green_tripdata_2025-01.parquet"
+uv run --env-file .env python scripts/read_raw.py --path "s3://raw/seoul_bike/ingested_on=2026-10-02/SeoulBikeData.csv"
 docker compose down
 ```
 
