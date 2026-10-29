@@ -26,7 +26,7 @@ def reader_for(filename: str) -> str:
         raise ValueError(message) from error
 
 
-def configure_seaweed(connection: duckdb.DuckDBPyConnection) -> None:
+def configure_s3(connection: duckdb.DuckDBPyConnection) -> None:
     """Настроить S3-совместимый доступ DuckDB к локальному Seaweed."""
     endpoint = os.getenv("S3_ENDPOINT", "localhost:8333")
     access_key = os.getenv("S3_ACCESS_KEY", "s3admin")
@@ -50,7 +50,7 @@ def main() -> None:
     reader = reader_for(object_path)
 
     connection = duckdb.connect()
-    configure_seaweed(connection)
+    configure_s3(connection)
     rows = connection.execute(
         f"SELECT * FROM {reader}(?) LIMIT 5", [object_path]
     ).fetchall()
