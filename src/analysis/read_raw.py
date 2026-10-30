@@ -1,4 +1,4 @@
-"""Прочитать raw-объект из MinIO через DuckDB без создания таблиц."""
+"""Прочитать raw-объект из S3 через DuckDB без создания таблиц."""
 
 from __future__ import annotations
 
@@ -26,11 +26,11 @@ def reader_for(filename: str) -> str:
         raise ValueError(message) from error
 
 
-def configure_minio(connection: duckdb.DuckDBPyConnection) -> None:
+def configure_s3(connection: duckdb.DuckDBPyConnection) -> None:
     """Настроить S3-совместимый доступ DuckDB к локальному SeaweedFS."""
-    endpoint = os.getenv("S3_ENDPOINT", "localhost:8333")
-    access_key = os.getenv("S3_ACCESS_KEY", "s3admin")
-    secret_key = os.getenv("S3_SECRET_KEY", "s3admin123")
+    endpoint = os.getenv("S3_ENDPOINT")
+    access_key = os.getenv("S3_ACCESS_KEY")
+    secret_key = os.getenv("S3_SECRET_KEY")
 
     connection.execute("INSTALL httpfs")
     connection.execute("LOAD httpfs")
@@ -50,7 +50,7 @@ def main() -> None:
     reader = reader_for(object_path)
 
     connection = duckdb.connect()
-    configure_minio(connection)
+    configure_s3(connection)
     rows = connection.execute(
         f"SELECT * FROM {reader}(?) LIMIT 5", [object_path]
     ).fetchall()
