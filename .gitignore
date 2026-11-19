@@ -13,3 +13,6 @@ dbt/target/
 dbt/logs/
 *.log
 .DS_Store
+
+# Настройки VS Code
+.vscode/
