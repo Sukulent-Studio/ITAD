@@ -24,9 +24,11 @@ if parsed_url.query:
 with DAG(
     dag_id="ingest_raw",
     description="Проверяет HTTP-источник и записывает сырые данные в raw-слой MinIO.",
-    start_date=datetime(2026, 9, 16),
-    schedule=None,
+    start_date=datetime(2026, 11, 12),
+    end_date=datetime(2026, 11, 12),
+    schedule_interval="@daily",
     catchup=True,
+    schedule=None,
     tags=["raw"],
 ) as dag:
     wait_for_primary_source = HttpSensor(
